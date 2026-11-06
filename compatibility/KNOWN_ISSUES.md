@@ -8,7 +8,7 @@ The pinned public source signals termination through a plain cross-thread boolea
 
 A later V3 build reached its quit marker but hung. Debugger evidence showed `__stdio_exit` waiting on stdin while a detached non-TTY reader held the lock, after `svMain` had stopped. Private V4 adds a Linux non-TTY reader that can be woken and joined. Its real Linux build exited 0 without OOM, and five isolated non-TTY/TTY SIGINT and console-quit cycles exited naturally with the existing upstream return code 1. All five required candidate modules were confirmed mapped in each cycle. One TTY console harness attempt failed to deliver its command; a separate real-PTY retry passed. Details and limitations are in [test results](TEST_RESULTS.md).
 
-V4 has not been added to the published `source-lan` branch or deployed to the running server. Shutdown issue #1 remains open until publication and deployment are reviewed; the private test is not a public-source or deployed-server result. Fresh installed-package startup/shutdown tests now pass for the private packages; a new client-session regression and publication/deployment review remain outstanding.
+V4 has not been added to the published `source-lan` branch. Its private Runtime V3 is now deployed: a real service SIGINT stop returned naturally with code 1, restart passed, and mapped module hashes, resources and TCP/UDP responses were checked. Shutdown issue #1 remains open for public source integration/review and a new client-session regression. The earlier client gameplay session predates V4. Fresh installed-package startup/shutdown checks also pass for both private packages.
 
 ## Binary package and source closure
 

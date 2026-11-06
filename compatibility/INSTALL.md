@@ -1,6 +1,6 @@
 # Installation status and operating boundary
 
-There is no published ready binary or verified fresh-install installer yet. This document gives the current source-build path and the operational requirements for an isolated development test. It must not be treated as a completed end-to-end Mac installation guide.
+There is no published ready binary. Private owner packages now have verified fresh-install and shutdown checks; those packages and their V4 patch are not part of this public source recipe. This document gives the current source-build path and the operational requirements for an isolated development test. It must not be treated as a completed end-to-end Mac installation guide.
 
 ## Build the Linux server
 
@@ -22,6 +22,8 @@ The package's `run.sh` is the original upstream Linux launcher. Server resources
 cd /absolute/new/fxserver-work/package/alpine/opt/cfx-server
 /absolute/new/fxserver-work/package/run.sh +exec example-lan.cfg
 ```
+
+For an imported Alpine rootfs, provide a writable `/tmp`. The verified private container uses `--tmpfs /tmp:rw,nosuid,nodev,size=64m`; the Linux TCP dispatcher creates its internal Unix pipe there. A missing `/tmp` can leave a listening TCP socket whose HTTP connections are immediately reset. This is a runtime filesystem requirement, not an authentication fix.
 
 The example binds TCP and UDP to `127.0.0.1:30120`, enables `sv_lan true`, selects Legacy 3889, allows four clients and starts only the documented public resources. It contains no operator key. Loopback cannot be reached from another Mac; do not replace it with a public listener before designing and verifying the restricted network path for your environment. The successful project test used a dedicated Docker bridge and host firewall guard, not this loopback example by itself.
 

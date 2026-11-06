@@ -18,7 +18,7 @@ This repository contains the public source and build recipe for a Linux x86-64 F
 
 The build does not add an operating-system check or platform-specific ticket bypass. Its `sv_lan true` setting affects every client connecting to that instance. The M5 join, resource load, movement and camera interaction were observed, but this does not establish normal Cfx ticket behavior, anti-cheat operation, or compatibility with public servers.
 
-Private shutdown work is separate from the public source build. A private V4 patch adds an atomic stop path, `svMain` ownership/join handling, an interruptible Linux non-TTY reader, and launcher-side thread joining. Its Linux build exited 0 without the reported OOM, and five shutdown cycles passed (three non-TTY and two TTY, with the upstream process exit code 1). That patch is **not in the public source branch or live server**; these shutdown results are source-test evidence, not a new client-join test.
+Private shutdown work is separate from the public source build. A private V4 patch adds an atomic stop path, `svMain` ownership/join handling, an interruptible Linux non-TTY reader, and launcher-side thread joining. Its Linux build exited 0 without the reported OOM, and five shutdown cycles passed (three non-TTY and two TTY, with the upstream process exit code 1). That patch is **not in the public source branch**. Its privately verified Runtime V3 package is now deployed to the owner's single isolated Linux server. The deployed service passed a real SIGINT stop with natural exit 1 and a restart; five mapped module hashes, selected resources and TCP/UDP responses were verified. The earlier client gameplay session has not been repeated on V4.
 
 ## Package files and size
 
