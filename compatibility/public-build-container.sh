@@ -68,6 +68,8 @@ cp /work/verified-downloads/sgerrand.rsa.pub /app/alpine/etc/apk/keys/sgerrand.r
 cp /work/verified-downloads/peachypies.rsa.pub /app/alpine/utils/peachypies.rsa.pub
 cp /work/verified-downloads/hydrogen.rsa.pub /app/alpine/utils/hydrogen.rsa.pub
 cp /work/verified-downloads/premake-5.0.0-beta1-src.zip /app/alpine/utils/premake.zip
+cp /work/verified-downloads/glibc-2.34-r0.apk /app/alpine/utils/glibc-2.34-r0.apk
+cp /work/verified-downloads/glibc-bin-2.34-r0.apk /app/alpine/utils/glibc-bin-2.34-r0.apk
 cp /work/verified-downloads/git-2.36.6-r0.apk /app/alpine/utils/git-2.36.6-r0.apk
 python3 - <<'PY'
 from pathlib import Path
@@ -80,11 +82,25 @@ replacements={
     'cp /utils/hydrogen.rsa.pub /etc/apk/keys/hydrogen@fivem.net-614370b9.rsa.pub',
     'curl --http1.1 -sLo /tmp/premake.zip https://github.com/premake/premake-core/releases/download/v5.0.0-beta1/premake-5.0.0-beta1-src.zip':
     'cp /utils/premake.zip /tmp/premake.zip',
-    '--allow-untrusted ': ''
+    'apk --no-cache --force-overwrite --allow-untrusted add \\':
+    'apk --no-cache --force-overwrite add \\'
 }
 for old,new in replacements.items():
     if s.count(old)!=1: raise SystemExit('Unexpected upstream toolchain script form: '+old[:45])
     s=s.replace(old,new)
+start='      x86_64) curl "https://github.com/sgerrand/alpine-pkg-glibc/releases/download/${GLIBC_VERSION}/glibc-${GLIBC_VERSION}.apk" \\'+ '\n'
+end='      && mv "glibc-bin-${GLIBC_VERSION}.apk" glibc-bin.apk ;; \\'+ '\n'
+if s.count(start)!=1 or s.count(end)!=1:
+    raise SystemExit('Unexpected upstream x86-64 glibc download block')
+begin=s.index(start)
+finish=s.index(end,begin)+len(end)
+s=s[:begin]+r'''      x86_64) cp /utils/glibc-2.34-r0.apk /tmp/glibc.apk \
+        && cp /utils/glibc-bin-2.34-r0.apk /tmp/glibc-bin.apk \
+        && printf '%s  %s\n' 3ef4a8d71777b3ccdd540e18862d688e32aa1c7bc5a1c0170271a43d0e736486 /tmp/glibc.apk | sha256sum -c - \
+        && printf '%s  %s\n' cc631135f481644ce74b28f6e37ceea848de06389d669182a012a9ca1ac5a95a /tmp/glibc-bin.apk | sha256sum -c - \
+        && apk verify /tmp/glibc.apk \
+        && apk verify /tmp/glibc-bin.apk ;; \
+'''+s[finish:]
 p.write_text(s)
 PY
 

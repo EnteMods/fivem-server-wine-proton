@@ -56,9 +56,11 @@ calling it a successful shutdown. Repeat read-only file QA with:
   Its native-doc workaround selects commit
   272dbe87ad0b24f63fe1458305ea99984c82d557, verified after build.
   The toolchain preparation script is copied only into the isolated rootfs.
-  That copy uses checked Cfx keys and Premake archive and drops the
-  allow-untrusted flag for sgerrand APKs. Alpine apk verify checks both
-  signatures against the checked sgerrand key. Signed Alpine 3.16 Git
+  That copy uses checked Cfx keys, Premake archive and glibc APKs. The
+  x86-64 glibc installation reads only the local copies; their pinned SHA-256
+  hashes and signatures are checked again inside the rootfs immediately before
+  apk add. The copied script also drops allow-untrusted for that install.
+  Alpine apk verify uses the checked sgerrand key. Signed Alpine 3.16 Git
   replaces an edge Git whose helper required curl_global_trace absent from
   pinned Cfx curl 7.72.0. Exact safe.directory entries cover only the
   container source and native-doc-tooling paths.

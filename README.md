@@ -1,6 +1,6 @@
-# FXServer public-source LAN build for Wine/Proton development
+# Custom FXServer build for Wine/Proton LAN development
 
-This fork records the public-source server used with the experimental [FiveM Apple Silicon client](https://github.com/EnteMods/fivem-macos). **A real Mac client join, resource load and basic game interaction were verified on 6 November 2026.** It is a development configuration with instance-wide `sv_lan true`, intended for an isolated, authorized test environment.
+This is the project's **custom, pinned development build of the public FXServer source**, used with the experimental [FiveM Apple Silicon client](https://github.com/EnteMods/fivem-macos). The custom work is the controlled source build, compatibility packaging and isolated deployment setup. **A real Mac client join, resource load and basic game interaction were verified on 6 November 2026.** It still uses upstream's instance-wide `sv_lan true`; it is intended for an isolated, authorized test environment.
 
 The `source-lan` branch is based on the tested upstream commit `88a413835e9d7f56633f249880a13f42297153a2`. The `master` branch is the upstream snapshot present when this fork was created; it is not the tested build. Do not merge or update a working deployment without the version and regression checks described below.
 
