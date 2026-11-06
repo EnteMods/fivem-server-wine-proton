@@ -1,38 +1,34 @@
-<div align="center">
-  <img src="https://static.cfx.re/vcs-repository-logo.svg" alt="R* | Cfx" width="350"><br /><br />
+# FXServer public-source LAN build for Wine/Proton development
 
-  [FiveM] | [RedM] | [Support]  | [Portal] | [Forum] | [Marketplace] | [Documentation] | [Discord]
-</div>
+This fork records the public-source server used with the experimental [FiveM Apple Silicon client](https://github.com/EnteMods/fivem-macos). **A real Mac client join, resource load and basic game interaction were verified on 6 November 2026.** It is a development configuration with instance-wide `sv_lan true`, intended for an isolated, authorized test environment.
 
-# FiveM & RedM
+The `source-lan` branch is based on the tested upstream commit `88a413835e9d7f56633f249880a13f42297153a2`. The `master` branch is the upstream snapshot present when this fork was created; it is not the tested build. Do not merge or update a working deployment without the version and regression checks described below.
 
-This repository contains the code for the Cfx projects, among which are the following:
+## What changed and what was tested
 
-- [FiveM](https://fivem.net/), a dual-purpose (SP/MP) modification framework for the PC version of Grand Theft Auto V Legacy as released by Rockstar Games.
-- [RedM](https://redm.net/), a modification framework for the PC version of Red Dead Redemption 2 as released by Rockstar Games.
-- FXServer, the server component for FiveM and RedM.
+The original binary Recommended server in LAN mode supplied a `ci` resource URI that the source client could not mount. Building the matching public FXServer through upstream's public CI route resolved this mismatch. The existing Mac installation then completed resource download, protocol acknowledgement and game initialization; the owner confirmed movement, camera control and general interaction. No client URI rewriting or ci-provider imitation was added.
 
-FiveM and RedM allow the creator community to host and operate large-scale community servers. Creators build their own game modes and content in a variety of scripting languages, giving players fully customized experiences to jump into.
+The public authentication and ticket source is unchanged. The separate public-development package omits only the unbuilt `svadhesive` metadata entry, following upstream `code/tools/ci/wsl-build.sh` at the pinned revision. Original component metadata is retained. No private security component is copied from the official binary distribution.
 
-## Getting started
+**This is not an OS-selective authentication exception.** LAN mode applies to Windows, macOS and Linux clients alike within this development instance. A client-reported OS is not platform attestation. Normal Cfx ticket issuance, regular anti-cheat integration and public-server compatibility remain unresolved. Native Linux/Proton-client gameplay has not been tested; the name describes the development target, not a completed compatibility matrix.
 
-To play, download the launcher from the [FiveM](https://fivem.net/) or [RedM](https://redm.net/) website.
+## Build, installation and release status
 
-To contribute to FiveM or RedM, follow the documentation in [docs/](https://github.com/citizenfx/fivem/tree/master/docs).
+- [Pinned public build recipe](compatibility/PUBLIC_BUILD.md), including fixed inputs, isolated toolchain repairs, packaging and verification commands.
+- [Installation and operating boundary](compatibility/INSTALL.md).
+- [Test results and remaining checks](compatibility/TEST_RESULTS.md).
+- [Known issues](compatibility/KNOWN_ISSUES.md).
 
-To run your own server, get started with server hosting for [FiveM](https://fivem.net/server-hosting) or [RedM](https://redm.net/server-hosting).
+The source tree and recipe are available. A finished binary download is **not yet published**: the new portable recipe still needs a clean second build, package startup test and complete corresponding-source/license inventory. No ready macOS DMG or verified Wine-to-game fresh-install workflow is claimed. The linked client repository documents its current installation-specific bindings and open bootstrap work.
 
-## License
+Do not expose this LAN development configuration as a public Internet service. The successful test used a dedicated network guard, explicit IPv4 game ports and access restricted to the authorized test device. A LAN convar is not network isolation.
 
-Use of this software is subject to the [Rockstar Games Creator Platform License Agreement](https://fivem.net/terms), except for specific files that are licensed under the GNU Library General Public License. 
+## AI-assisted work and contributions
 
-Full details are in the [LICENSE](https://github.com/citizenfx/fivem/blob/master/LICENSE) file, and third-party components are listed in [THIRD_PARTY_NOTICES](https://github.com/citizenfx/fivem/blob/master/THIRD_PARTY_NOTICES.md).
+The compatibility build/packaging work and documentation were developed with substantial help from AI coding agents under the project owner's direction. Upstream CitizenFX code retains its authorship. Independent review, reproducible tests and ordinary platform/API compatibility contributions are welcome. A legitimate supported solution for the missing `cfxTicket2` remains sought in the client project. Do not post credentials, ticket values, private addresses, game data or proprietary DLL payloads.
 
-[FiveM]: https://fivem.net/
-[RedM]: https://redm.net/
-[Support]: https://support.cfx.re/
-[Portal]: https://portal.cfx.re/
-[Forum]: https://forum.cfx.re/
-[Marketplace]: https://marketplace.cfx.re/
-[Documentation]: https://docs.fivem.net/
-[Discord]: https://discord.gg/fivem
+## Licensing and upstream
+
+The upstream [LICENSE](LICENSE), [LICENSES](LICENSES) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) remain unchanged and apply to their respective components. The preserved [upstream README](compatibility/UPSTREAM_README.md) describes the original project. This fork is not endorsed by Cfx.re, Rockstar Games or Take-Two.
+
+Independent original additions under `compatibility/` have the separately stated [No Sale license](compatibility/LICENSE.original-tooling.txt), with explicit exceptions for upstream-derived and third-party material. That restriction does not replace upstream licenses or relicense the FiveM source. The overall work is source-available; it is not described as universally OSI open source.
