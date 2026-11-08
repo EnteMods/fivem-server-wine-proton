@@ -15,6 +15,8 @@ namespace fx
 #define GSCOMMS_EXPORT DLL_IMPORT
 #endif
 
+GSCOMMS_EXPORT bool gscomms_try_execute_callback_on_main_thread(const std::function<void()>& fn, bool force = false);
+GSCOMMS_EXPORT void gscomms_execute_callback_on_main_thread_cancellable(const std::function<void()>& fn, const std::function<void()>& cancelled, bool force = false);
 GSCOMMS_EXPORT void gscomms_execute_callback_on_main_thread(const std::function<void()>& fn, bool force = false);
 GSCOMMS_EXPORT void gscomms_execute_callback_on_net_thread(const std::function<void()>& fn);
 GSCOMMS_EXPORT void gscomms_execute_callback_on_sync_thread(const std::function<void()>& fn);

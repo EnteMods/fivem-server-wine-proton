@@ -13,25 +13,48 @@ namespace fx::nodejs
 void UvLoopTimer::Initialize()
 {
 	m_runtimes.reserve(32);
-
-	const auto mainLoop = Instance<net::UvLoopManager>::Get()->GetOrCreate(std::string("svMain"))->GetLoop();
-	uv_timer_init(mainLoop, &m_timer);
-	uv_timer_start(&m_timer, UvPersistentCallback(&m_timer, [this](uv_timer_t*)
+	m_loop = Instance<net::UvLoopManager>::Get()->GetOrCreate("svMain");
+	auto holder = m_loop;
+	(void)holder->TryEnqueueCallback([this, holder]()
 	{
-		for(const auto rt : m_runtimes)
+		if (m_shutdownRequested.load(std::memory_order_acquire) || m_initialized)
 		{
-			rt->TickFast();
+			return;
 		}
-	}), 0, 1);
-
-	m_initialized = true;
+		m_timer = std::make_unique<UvHandleContainer<uv_timer_t>>();
+		uv_timer_init(holder->GetLoop(), m_timer->get());
+		uv_timer_start(m_timer->get(), UvPersistentCallback(m_timer->get(), [this](uv_timer_t*)
+		{
+			for (const auto rt : m_runtimes)
+			{
+				rt->TickFast();
+			}
+		}), 0, 1);
+		m_initialized = true;
+		holder->RegisterShutdownCallback([this]()
+		{
+			if (m_timer)
+			{
+				uv_timer_stop(m_timer->get());
+				m_timer.reset();
+			}
+			m_initialized = false;
+		});
+	});
 }
 
 void UvLoopTimer::Shutdown()
 {
-	if (m_initialized)
+	m_shutdownRequested.store(true, std::memory_order_release);
+	if (m_loop.GetRef())
 	{
-		uv_timer_stop(&m_timer);
+		(void)m_loop->TryEnqueueCallback([this]()
+		{
+			if (m_initialized)
+			{
+				uv_timer_stop(m_timer->get());
+			}
+		});
 	}
 }
 

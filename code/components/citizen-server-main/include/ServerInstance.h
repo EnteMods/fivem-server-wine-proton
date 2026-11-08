@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <ServerInstanceBase.h>
 
 #include <console/Console.CommandHelpers.h>
@@ -16,7 +17,7 @@ namespace fx
 	class ServerInstance : public ServerInstanceBase
 	{
 	private:
-		bool m_shouldTerminate;
+		std::atomic<bool> m_shouldTerminate;
 
 		std::string m_rootPath;
 

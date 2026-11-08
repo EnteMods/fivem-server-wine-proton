@@ -55,6 +55,23 @@ constexpr const char kDefaultServerList[] = "https://servers-frontend.fivem.net/
 
 static fx::GameServer* g_gameServer;
 
+namespace
+{
+struct MainCallbackTarget
+{
+	std::mutex mutex;
+	std::weak_ptr<fx::GameServer::CallbackListBase> callbacks;
+};
+
+MainCallbackTarget& GetMainCallbackTarget()
+{
+	// Producers may outlive static destruction; this publisher owns no handles.
+	static auto* target = new MainCallbackTarget;
+	return *target;
+}
+}
+
+
 extern fwEvent<> OnEnetReceive;
 
 namespace fx
@@ -77,8 +94,19 @@ namespace fx
 
 	GameServer::~GameServer()
 	{
+		{
+			auto& target = GetMainCallbackTarget();
+			std::lock_guard<std::mutex> lock(target.mutex);
+			if (target.callbacks.lock() == m_mainThreadCallbacks)
+			{
+				target.callbacks.reset();
+			}
+		}
 		// TODO: fix if ever multi-instancing
-		m_thread.detach();
+		if (m_thread.joinable())
+		{
+			m_thread.detach();
+		}
 	}
 
 	void GameServer::AttachToObject(ServerInstanceBase* instance)
@@ -135,7 +163,31 @@ namespace fx
 			ForceHeartbeat();
 		});
 
-		m_mainThreadCallbacks = std::make_unique<CallbackListNng>("inproc://main_client", 0);
+		if (m_net->SupportsUvUdp())
+		{
+			m_mainThreadLoop = Instance<net::UvLoopManager>::Get()->GetOrCreate("svMain");
+			auto mainQueue = std::make_shared<SvMainCallbackQueue>();
+			m_mainThreadCallbacks = std::make_shared<CallbackListUv>(mainQueue);
+			auto holder = m_mainThreadLoop;
+			if (!holder->TryEnqueueCallback([holder, mainQueue]()
+			{
+				mainQueue->InitializeOnOwner(holder->Get());
+				holder->RegisterShutdownCallback([mainQueue]() { mainQueue->ShutdownOnOwner(); });
+			}))
+			{
+				throw std::runtime_error("svMain stopped before callback queue initialization");
+			}
+		}
+		else
+		{
+			m_mainThreadCallbacks = std::make_shared<CallbackListNng>("inproc://main_client", 0);
+		}
+
+		{
+			auto& target = GetMainCallbackTarget();
+			std::lock_guard<std::mutex> lock(target.mutex);
+			target.callbacks = m_mainThreadCallbacks;
+		}
 
 		instance->OnRequestQuit.Connect([this](const std::string& reason)
 		{
@@ -162,10 +214,10 @@ namespace fx
 			{
 				m_mainThreadLoop = Instance<net::UvLoopManager>::Get()->GetOrCreate("svMain");
 
-				static std::shared_ptr<uvw::SignalHandle> sigint = m_mainThreadLoop->Get()->resource<uvw::SignalHandle>();
+				auto sigint = m_mainThreadLoop->Get()->resource<uvw::SignalHandle>();
 				sigint->start(SIGINT);
 
-				static std::shared_ptr<uvw::SignalHandle> sighup = m_mainThreadLoop->Get()->resource<uvw::SignalHandle>();
+				auto sighup = m_mainThreadLoop->Get()->resource<uvw::SignalHandle>();
 				sighup->start(SIGHUP);
 
 				sigint->on<uvw::SignalEvent>([this](const uvw::SignalEvent& ev, uvw::SignalHandle& sig)
@@ -180,22 +232,27 @@ namespace fx
 					m_instance->GetComponent<console::Context>()->ExecuteSingleCommandDirect(ProgramArguments{ "quit", GetVariable("txAdminServerMode").empty() ? "SIGHUP received" : "" });
 				});
 
-				auto asyncInitHandle = std::make_shared<std::unique_ptr<UvHandleContainer<uv_async_t>>>();;
-				*asyncInitHandle = std::make_unique<UvHandleContainer<uv_async_t>>();
+				m_mainThreadLoop->RegisterShutdownCallback([sigint, sighup]()
+				{
+					sigint->stop();
+					sighup->stop();
+					sigint->close();
+					sighup->close();
+				});
 
-				uv_async_init(m_mainThreadLoop->GetLoop(), (*asyncInitHandle)->get(), UvPersistentCallback((*asyncInitHandle)->get(), [this, asyncInitHandle](uv_async_t*)
+				// Reuse the holder async instead of creating a self-owning init handle.
+				(void)m_mainThreadLoop->TryEnqueueCallback([this]()
 				{
 					// private data for the net thread
 					struct MainPersistentData
 					{
-						UvHandleContainer<uv_timer_t> tickTimer;
-
-						std::shared_ptr<std::unique_ptr<UvHandleContainer<uv_async_t>>> callbackAsync;
+						std::unique_ptr<UvHandleContainer<uv_timer_t>> tickTimer;
 
 						std::chrono::milliseconds lastTime;
 					};
 
 					auto mainData = std::make_shared<MainPersistentData>();
+					mainData->tickTimer = std::make_unique<UvHandleContainer<uv_timer_t>>();
 					mainData->lastTime = msec();
 
 					auto loop = m_mainThreadLoop->GetLoop();
@@ -213,8 +270,8 @@ namespace fx
 							0.001, 0.002, 0.004, 0.006, 0.008, 0.010, 0.015, 0.020, 0.030, 0.050, 0.070, 0.100, 0.150, 0.250
 						});
 
-					uv_timer_init(loop, &mainData->tickTimer);
-					uv_timer_start(&mainData->tickTimer, UvPersistentCallback(&mainData->tickTimer, [this, mpd](uv_timer_t*)
+					uv_timer_init(loop, mainData->tickTimer->get());
+					uv_timer_start(mainData->tickTimer->get(), UvPersistentCallback(mainData->tickTimer->get(), [this, mpd](uv_timer_t*)
 					{
 						auto now = msec();
 						auto thisTime = now - mpd->lastTime;
@@ -232,31 +289,13 @@ namespace fx
 						collector.Observe((atEnd - now).count() / 1000.0);
 					}), frameTime, frameTime);
 
-					// event handle for callback list evaluation
-					
-					// unique_ptr wrapper is a workaround for libc++ bug (fixed in LLVM r340823)
-					mainData->callbackAsync = std::make_shared<std::unique_ptr<UvHandleContainer<uv_async_t>>>();
-					*mainData->callbackAsync = std::make_unique<UvHandleContainer<uv_async_t>>();
-
-					uv_async_init(loop, (*mainData->callbackAsync)->get(), UvPersistentCallback((*mainData->callbackAsync)->get(), [this](uv_async_t*)
+					m_mainThreadLoop->RegisterShutdownCallback([mainData]()
 					{
-						m_mainThreadCallbacks->Run();
-					}));
-
-					// run remaining callbacks before we remove this callback list
-					if (m_mainThreadCallbacks)
-					{
-						m_mainThreadCallbacks->Run();
-					}
-
-					m_mainThreadCallbacks = std::make_unique<CallbackListUv>(mainData->callbackAsync);
-					m_mainThreadCallbacks->AttachToThread();
-
-					// store the pointer in the class for lifetime purposes
+						uv_timer_stop(mainData->tickTimer->get());
+						mainData->tickTimer.reset();
+					});
 					m_mainThreadData = std::move(mainData);
-				}));
-
-				uv_async_send((*asyncInitHandle)->get());
+				});
 			}
 		}, 100);
 
@@ -812,10 +851,15 @@ namespace fx
 
 	void GameServer::CallbackListBase::Add(const std::function<void()>& fn, bool force)
 	{
+		(void)TryAdd(fn, force);
+	}
+
+	bool GameServer::CallbackListBase::TryAdd(const std::function<void()>& fn, bool force)
+	{
 		if (threadId == std::this_thread::get_id() && !force)
 		{
 			fn();
-			return;
+			return true;
 		}
 
 		// add to the queue
@@ -823,6 +867,7 @@ namespace fx
 
 		// signal the waiting thread
 		SignalThread();
+		return true;
 	}
 
 	void GameServer::CallbackListBase::Run()
@@ -1292,6 +1337,25 @@ namespace fx
 #include <packethandlers/ArrayUpdatePacketHandler.h>
 #include <packethandlers/GameStateNAckPacketHandler.h>
 #include <packethandlers/GameStateAckPacketHandler.h>
+
+DLL_EXPORT bool gscomms_try_execute_callback_on_main_thread(const std::function<void()>& fn, bool force)
+{
+	std::shared_ptr<fx::GameServer::CallbackListBase> callbacks;
+	{
+		auto& target = GetMainCallbackTarget();
+		std::lock_guard<std::mutex> lock(target.mutex);
+		callbacks = target.callbacks.lock();
+	}
+	return callbacks && callbacks->TryAdd(fn, force);
+}
+
+DLL_EXPORT void gscomms_execute_callback_on_main_thread_cancellable(const std::function<void()>& fn, const std::function<void()>& cancelled, bool force)
+{
+	if (!gscomms_try_execute_callback_on_main_thread(fn, force))
+	{
+		cancelled();
+	}
+}
 
 DLL_EXPORT void gscomms_execute_callback_on_main_thread(const std::function<void()>& fn, bool force)
 {

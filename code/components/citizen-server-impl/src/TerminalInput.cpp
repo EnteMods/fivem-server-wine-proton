@@ -13,6 +13,10 @@
 
 #include <CoreConsole.h>
 #include <ServerInstanceBase.h>
+#include <ServerShutdownLifecycle.h>
+#ifdef __linux__
+#include <InterruptibleNonTtyInput.h>
+#endif
 
 #include <ResourceManager.h>
 
@@ -284,6 +288,63 @@ static InitFunction initFunction([]()
 
 				return rxx.invoke(replxx::Replxx::ACTION::COMMIT_LINE, code);
 			});
+
+#ifdef __linux__
+			if (!isatty(STDIN_FILENO))
+			{
+				auto phase = fx::GetServerShutdownPhase(instance);
+				if (phase != fx::ServerShutdownPhase::Unavailable)
+				{
+					if (phase != fx::ServerShutdownPhase::Running) return;
+					auto reader = std::make_shared<fx::NonTtyInputWorker>(STDIN_FILENO);
+					if (!fx::RegisterServerStoppedCallback(instance, [reader]()
+					{
+						if (!reader->StopAndJoin())
+						{
+							throw std::logic_error("console reader cannot join itself");
+						}
+					}))
+					{
+						throw std::logic_error("server finalized before console reader registration");
+					}
+					instance->OnRequestQuit.Connect([reader](const std::string&)
+					{
+						// The quit subscriber may hold console locks: wake only here.
+						reader->RequestStop();
+					});
+					reader->Start([=](fx::InterruptibleNonTtyInput& input)
+					{
+						SetThreadName(-1, "[Cfx] Stdin");
+						while (!input.IsStopped())
+						{
+							if (disableTTYVariable->GetValue())
+							{
+								input.WaitForStop(1000);
+								continue;
+							}
+							while (!con->IsBufferEmpty() || con->GIsPrinting())
+							{
+								if (input.WaitForStop(25)) return;
+							}
+							if (input.IsStopped()) return;
+							rxx.history_sync(instance->GetRootPath() + "/.replxx_history");
+							std::string line;
+							auto result = input.ReadLine(line);
+							if (result == fx::InterruptibleNonTtyInput::Result::Stopped || input.IsStopped()) return;
+							if (result != fx::InterruptibleNonTtyInput::Result::Line)
+							{
+								con->AddToBuffer("quit \"Ctrl-C pressed in server console.\"\n");
+								return;
+							}
+							con->AddToBuffer(line);
+							con->AddToBuffer("\n");
+							rxx.history_add(line);
+						}
+					});
+					return;
+				}
+			}
+#endif
 
 			std::thread([=]()
 			{

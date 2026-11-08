@@ -10,84 +10,136 @@
 #include "UvLoopManager.h"
 #include "memdbgon.h"
 
+#include <exception>
+
 namespace net
 {
 UvLoopHolder::UvLoopHolder(const std::string& loopTag)
 	: m_shouldExit(false), m_loopTag(loopTag)
 {
-	// initialize the libuv loop
 	m_loop = uvw::Loop::create();
-
-	// assign our pointer to the loop
 	m_loop->data(std::make_shared<void*>(this));
-
 	m_async = m_loop->resource<uvw::AsyncHandle>();
 
-	m_async->on<uvw::AsyncEvent>([this](const uvw::AsyncEvent& ev, uvw::AsyncHandle& handle)
+	m_async->on<uvw::AsyncEvent>([this](const uvw::AsyncEvent&, uvw::AsyncHandle&)
 	{
 		std::function<void()> fn;
-
 		while (m_functionQueue.try_pop(fn))
 		{
 			fn();
 		}
+
+		if (m_shouldExit.load(std::memory_order_acquire))
+		{
+			{
+				std::lock_guard<std::mutex> lock(m_enqueueMutex);
+				m_shutdownStarted = true;
+			}
+			for (const auto& shutdown : m_shutdownCallbacks)
+			{
+				shutdown();
+			}
+			m_async->close();
+			m_loop->stop();
+		}
 	});
 
-	// start the loop's runtime thread
-	m_thread = std::thread([=] ()
+	m_thread = std::thread([=]()
 	{
 		SetThreadName(-1, const_cast<char*>(va(
 #ifdef _WIN32
 			"UV loop: %s"
 #else
-			// pthread names are limited in length, so we keep it short
 			"luv_%s"
 #endif
 			, m_loopTag.c_str())));
-
 		Instance<UvLoopManager>::Get()->SetCurrent(this);
 
-		// start running the loop
-		while (!m_shouldExit)
+		// A stop before worker startup must still dispatch accepted work.
+		do
 		{
-			// execute the loop - this will probably return instantly before any events are added
 			m_loop->run<uvw::Loop::Mode::DEFAULT>();
+			if (!m_shouldExit.load(std::memory_order_acquire))
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			}
+		} while (!m_shouldExit.load(std::memory_order_acquire));
 
-			// wait for a bit to not cause a full-load loop
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		// Only owners close their handles. Unknown handles make shutdown fail.
+		for (;;)
+		{
+			struct PendingHandles
+			{
+				bool any = false;
+				bool open = false;
+			} pending;
+			uv_walk(m_loop->raw(), [](uv_handle_t* handle, void* state)
+			{
+				auto& handles = *static_cast<PendingHandles*>(state);
+				handles.any = true;
+				handles.open |= !uv_is_closing(handle);
+			}, &pending);
+			if (pending.open)
+			{
+				break;
+			}
+			if (!pending.any)
+			{
+				// Captured owner state survives through every close callback.
+				m_shutdownCallbacks.clear();
+				m_loop->close();
+				m_shutdownComplete.store(m_loop->raw() == nullptr, std::memory_order_release);
+				if (m_shutdownComplete.load(std::memory_order_acquire))
+				{
+					m_loop = {};
+				}
+				break;
+			}
+			// Recheck after close callbacks in case one created a new handle.
+			m_loop->run<uvw::Loop::Mode::NOWAIT>();
 		}
-
-		// clean up the libuv loop
-		m_loop = {};
 	});
+	m_loopThreadId = m_thread.get_id();
 }
 
 UvLoopHolder::~UvLoopHolder()
 {
-	// mark the thread as needing to exit
-	m_shouldExit = true;
-
-	// stop the loop as soon as possible
-	m_loop->stop();
-
-	// signal the loop so it can get triggered
-	uv_async_t async;
-	
-	uv_async_init(m_loop->raw(), &async, [] (uv_async_t*)
+	if (!RequestStopAndJoin())
 	{
+		// Failed shutdown leaves worker or owner-handle lifetimes unresolved.
+		std::terminate();
+	}
+}
 
-	});
-
-	uv_async_send(&async);
-
-	// wait for the thread to exit cleanly
+bool UvLoopHolder::RequestStopAndJoin()
+{
+	{
+		std::lock_guard<std::mutex> lock(m_enqueueMutex);
+		if (!m_shouldExit.exchange(true, std::memory_order_acq_rel))
+		{
+			m_async->send();
+		}
+	}
+	if (std::this_thread::get_id() == m_loopThreadId)
+	{
+		return false;
+	}
+	std::lock_guard<std::mutex> lock(m_joinMutex);
 	if (m_thread.joinable())
 	{
 		m_thread.join();
 	}
+	return m_shutdownComplete.load(std::memory_order_acquire);
+}
 
-	// clean up the async
-	uv_close(reinterpret_cast<uv_handle_t*>(&async), nullptr);
+void UvLoopHolder::RegisterShutdownCallback(const std::function<void()>& fn)
+{
+	std::lock_guard<std::mutex> lock(m_enqueueMutex);
+	if (m_shutdownStarted)
+	{
+		throw std::runtime_error("UvLoopHolder owner registered after shutdown began");
+	}
+	m_shutdownCallbacks.push_back(fn);
 }
 
 void UvLoopHolder::AssertThread()

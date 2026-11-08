@@ -20,6 +20,7 @@
 
 #include <UvLoopHolder.h>
 #include <UvTcpServer.h>
+#include <SvMainCallbackQueue.h>
 
 #include <GameNames.h>
 
@@ -159,7 +160,9 @@ namespace fx
 
 			void Add(const std::function<void()>& fn, bool force = false);
 
-			void Run();
+			virtual bool TryAdd(const std::function<void()>& fn, bool force = false);
+
+			virtual void Run();
 
 		protected:
 			virtual void SignalThread() = 0;
@@ -189,6 +192,22 @@ namespace fx
 
 		struct CallbackListUv : public CallbackListBase
 		{
+			inline CallbackListUv(std::shared_ptr<SvMainCallbackQueue> mainQueue)
+				: m_mainQueue(std::move(mainQueue))
+			{
+			}
+
+			bool TryAdd(const std::function<void()>& fn, bool force = false) override
+			{
+				return m_mainQueue ? m_mainQueue->TryAdd(fn, force) : CallbackListBase::TryAdd(fn, force);
+			}
+
+			void Run() override
+			{
+				if (m_mainQueue) m_mainQueue->RunOnOwner();
+				else CallbackListBase::Run();
+			}
+
 			inline CallbackListUv(std::weak_ptr<std::unique_ptr<UvHandleContainer<uv_async_t>>> async)
 				: m_async(async)
 			{
@@ -200,11 +219,19 @@ namespace fx
 
 		private:
 			std::weak_ptr<std::unique_ptr<UvHandleContainer<uv_async_t>>> m_async;
+
+			std::shared_ptr<SvMainCallbackQueue> m_mainQueue;
 		};
 
 		inline void InternalAddMainThreadCb(const std::function<void()>& fn, bool force = false)
 		{
-			m_mainThreadCallbacks->Add(fn, force);
+			(void)InternalTryAddMainThreadCb(fn, force);
+		}
+
+		inline bool InternalTryAddMainThreadCb(const std::function<void()>& fn, bool force = false)
+		{
+			auto callbacks = m_mainThreadCallbacks;
+			return callbacks && callbacks->TryAdd(fn, force);
 		}
 
 		inline void InternalAddNetThreadCb(const std::function<void()>& fn)
@@ -335,7 +362,7 @@ namespace fx
 
 		std::function<bool(const uint8_t *, size_t, const net::PeerAddress &)> m_interceptor;
 
-		std::unique_ptr<CallbackListBase> m_mainThreadCallbacks;
+		std::shared_ptr<CallbackListBase> m_mainThreadCallbacks;
 
 		std::unique_ptr<CallbackListBase> m_netThreadCallbacks;
 

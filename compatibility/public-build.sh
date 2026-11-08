@@ -20,7 +20,7 @@ if [[ -e "$work" ]]; then
 fi
 [[ $(uname -m) == x86_64 ]] || { echo 'An x86-64 Linux host is required.' >&2; exit 2; }
 [[ $(uname -s) == Linux ]] || { echo 'A Linux host is required.' >&2; exit 2; }
-for command in docker git curl sha256sum df awk date; do
+for command in docker git curl sha256sum df awk date python3; do
   command -v "$command" >/dev/null || { echo "Missing command: $command" >&2; exit 2; }
 done
 free_kib=$(df -Pk "$(dirname "$work")" | awk 'NR == 2 { print $4 }')
@@ -60,6 +60,8 @@ git -C "$work/source" remote add origin https://github.com/citizenfx/fivem.git
 git -C "$work/source" fetch --depth=1 --filter=blob:none origin "$source_sha"
 git -C "$work/source" checkout -q --detach "$source_sha"
 [[ $(git -C "$work/source" rev-parse HEAD) == "$source_sha" ]]
+python3 "$recipe/public-source-overlay.py" apply "$recipe/SOURCE-SHA256SUMS.txt" "$work/source" \
+  --overlay "$recipe/.." --receipt "$work/source-overlay-inventory.json"
 git init -q "$work/server-data"
 git -C "$work/server-data" remote add origin https://github.com/citizenfx/cfx-server-data.git
 git -C "$work/server-data" fetch --depth=1 --filter=blob:none origin "$data_sha"

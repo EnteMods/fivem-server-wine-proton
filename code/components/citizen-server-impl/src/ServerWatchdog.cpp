@@ -376,6 +376,24 @@ static InitFunction initFunction([]()
 
 				if (loop.GetRef())
 				{
+					if (std::string_view(loopName) == "svMain")
+					{
+						(void)loop->TryEnqueueCallback([loop, bite, loopName]()
+						{
+							auto loopTimer = loop->Get()->resource<uvw::TimerHandle>();
+							loopTimer->on<uvw::TimerEvent>([bite, loopName](const uvw::TimerEvent&, uvw::TimerHandle&)
+							{
+								bite(loopName);
+							});
+							loopTimer->start(0ms, 5000ms);
+							loop->RegisterShutdownCallback([loopTimer]()
+							{
+								loopTimer->stop();
+								loopTimer->close();
+							});
+						});
+						continue;
+					}
 					auto refLoop = loop->Get();
 
 					// doing this is bollocks, it's on the wrong thread

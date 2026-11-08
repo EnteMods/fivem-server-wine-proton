@@ -129,10 +129,12 @@ printf '%s  %s\n' \
 /usr/local/bin/proot --kill-on-exit -R /app/alpine /bin/sh -c 'apk info -vv' > /work/toolchain-apk-versions.txt
 sha256sum /app/alpine/etc/apk/repositories > /work/toolchain-repositories.sha256
 
+python3 /recipe/public-source-overlay.py verify /recipe/SOURCE-SHA256SUMS.txt /src
 printf 'phase=original-public-ci\n' > /work/status
 cd /src
 /bin/sh code/tools/ci/build_server_docker_alpine_public.sh
 test "$(git -C /src rev-parse HEAD)" = 88a413835e9d7f56633f249880a13f42297153a2
+python3 /recipe/public-source-overlay.py verify /recipe/SOURCE-SHA256SUMS.txt /src
 test "$(git -C /src/ext/native-doc-tooling rev-parse HEAD)" = 272dbe87ad0b24f63fe1458305ea99984c82d557
 printf '%s  %s\n' \
     5c4ba646598c50750342836662f94826ef2aae74209f2059a17835b00046de42 \

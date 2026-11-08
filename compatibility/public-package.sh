@@ -20,6 +20,8 @@ done
   echo 'The pinned public build has not completed.' >&2; exit 2;
 }
 [[ $(git -c safe.directory="$work/source" -C "$work/source" rev-parse HEAD) == "$source_sha" ]]
+[[ -f "$work/source-overlay-inventory.json" ]]
+python3 "$recipe/public-source-overlay.py" verify "$recipe/SOURCE-SHA256SUMS.txt" "$work/source"
 [[ $(git -C "$work/server-data" rev-parse HEAD) == "$data_sha" ]]
 [[ $(git --git-dir="$work/source/.git/modules/ext/native-doc-tooling" rev-parse HEAD) == 272dbe87ad0b24f63fe1458305ea99984c82d557 ]]
 printf '%s  %s\n' bc08e3b4ab993063bf1c4be5c4591c0e0119f662d73938d0e62cec7e934f3075 \
@@ -108,9 +110,13 @@ chmod 0600 "$server/example-lan.cfg"
 mkdir -p "$work/package/UPSTREAM-LICENSES"
 cp -a "$work/source/LICENSE" "$work/package/UPSTREAM-LICENSES/CitizenFX-LICENSE"
 cp -a "$work/source/LICENSES" "$work/package/UPSTREAM-LICENSES/CitizenFX-LICENSES"
+cp "$recipe/SOURCE-SHA256SUMS.txt" "$work/package/SOURCE-OVERLAY-SHA256SUMS.txt"
+cp "$work/source-overlay-inventory.json" "$work/package/SOURCE-OVERLAY-INVENTORY.json"
 cat > "$work/package/SOURCE_PROVENANCE.txt" <<'TXT'
 Public FXServer source development package
-CitizenFX/FiveM: 88a413835e9d7f56633f249880a13f42297153a2
+CitizenFX/FiveM base: 88a413835e9d7f56633f249880a13f42297153a2
+V4/V5 source overlay: 23 files listed in SOURCE-OVERLAY-SHA256SUMS.txt.
+The Git HEAD identifies the base, not the modified worktree.
 Original public CI: code/tools/ci/build_server_docker_alpine_public.sh
 Standard resource data: citizenfx/cfx-server-data c6afa3909c763e3327ed76825e78453286c99f05
 System resources: source-built chat plus public yarn/webpack helpers; no Monitor artifact.
@@ -127,7 +133,7 @@ TXT
   sort -z | xargs -0 sha256sum > SHA256SUMS)
 python3 "$recipe/public-verify-package.py" "$work/package"
 bash "$recipe/public-smoke.sh" "$work/package"
-archive="$work/fxserver-public-source-dev-88a4138-linux-x64.tar.xz"
+archive="$work/fxserver-public-source-dev-88a4138-v5-overlay-linux-x64.tar.xz"
 (tar -C "$work" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
   -cf - package | xz -T2 -6 > "$archive")
 xz -t "$archive"

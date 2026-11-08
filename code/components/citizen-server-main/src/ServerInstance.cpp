@@ -7,10 +7,12 @@
 
 #include "StdInc.h"
 #include <ServerInstance.h>
+#include <ServerShutdownLifecycle.h>
 
 #include <OptionParser.h>
 
 #include <filesystem>
+#include <stdexcept>
 
 #include <ComponentLoader.h>
 
@@ -86,7 +88,7 @@ namespace fx
 				OnRequestQuit("Quit command executed.");
 			}
 
-			m_shouldTerminate = true;
+			m_shouldTerminate.store(true, std::memory_order_release);
 		};
 
 		m_quitCommand_0 = AddCommand("quit", [quit]()
@@ -111,6 +113,11 @@ namespace fx
 
 	void ServerInstance::Run()
 	{
+		if (!BeginServerShutdownLifecycle(this))
+		{
+			throw std::logic_error("Server shutdown lifecycle already active");
+		}
+
 		// initialize the server configuration
 		{
 			se::ScopedPrincipal principalScope(se::Principal{ "system.console" });
@@ -259,10 +266,23 @@ namespace fx
 		}
 
 		// tasks should be running in background threads; we'll just wait until someone wants to get rid of us
-		while (!m_shouldTerminate)
+		while (!m_shouldTerminate.load(std::memory_order_acquire))
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
+
+		// The Node parent environment is static. Its svMain ticks must finish
+		// before the launcher returns and static destruction can begin.
+		if (auto mainLoop = Instance<net::UvLoopManager>::Get()->Get("svMain"); mainLoop.GetRef())
+		{
+			if (!mainLoop->RequestStopAndJoin())
+			{
+				throw std::logic_error("svMain shutdown failed: self-join or owner handles left open");
+			}
+		}
+
+		// Launcher thread, after svMain callbacks and quit subscribers released locks.
+		FinalizeServerShutdownLifecycle(this);
 	}
 }
 

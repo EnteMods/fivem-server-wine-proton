@@ -27,6 +27,22 @@
 
 #include <TcpListenManager.h>
 
+static void CancelResourceHttpResponse(const fwRefContainer<net::HttpResponse>& response)
+{
+	if (response->HasEnded())
+	{
+		return;
+	}
+	if (response->HasSentHeaders())
+	{
+		response->CloseSocket();
+		return;
+	}
+	response->SetStatusCode(503);
+	response->SetHeader("Content-Type", "text/plain; charset=utf-8");
+	response->End("Server shutting down.");
+}
+
 // HTTP handler
 static auto GetHttpHandler(fx::Resource* resource)
 {
@@ -100,7 +116,7 @@ public:
 			return;
 		}
 
-		gscomms_execute_callback_on_main_thread([this, localPath, request, response]
+		gscomms_execute_callback_on_main_thread_cancellable([this, localPath, request, response]
 		{
 			auto cbComponent = m_resource->GetManager()->GetComponent<fx::ResourceCallbackComponent>();
 
@@ -161,9 +177,9 @@ public:
 					{
 						fx::FunctionRef functionRef{ std::string{callback.via.ext.data(), callback.via.ext.size} };
 
-						request->SetDataHandler(make_shared_function([this, functionRef = std::move(functionRef), isBinary](const std::vector<uint8_t>& bodyArray) mutable
+						request->SetDataHandler(make_shared_function([this, functionRef = std::move(functionRef), isBinary, response](const std::vector<uint8_t>& bodyArray) mutable
 						{
-							gscomms_execute_callback_on_main_thread(make_shared_function([this, functionRef = std::move(functionRef), isBinary, bodyArray]()
+							gscomms_execute_callback_on_main_thread_cancellable(make_shared_function([this, functionRef = std::move(functionRef), isBinary, bodyArray]()
 							{
 								if (isBinary)
 								{
@@ -173,7 +189,10 @@ public:
 								{
 									m_resource->GetManager()->CallReference<void>(functionRef.GetRef(), std::string(bodyArray.begin(), bodyArray.end()));
 								}
-							}));
+							}), [response]()
+							{
+								CancelResourceHttpResponse(response);
+							});
 						}));
 					}
 				}
@@ -234,6 +253,9 @@ public:
 			//MonoEnsureThreadAttached();
 
 			m_resource->GetManager()->CallReference<void>(*m_handlerRef, requestWrap, responseWrap);
+		}, [response]()
+		{
+			CancelResourceHttpResponse(response);
 		});
 	}
 

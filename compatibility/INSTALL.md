@@ -1,6 +1,6 @@
 # Installation status and operating boundary
 
-There is no published ready binary. Private owner packages now have verified fresh-install and shutdown checks; those packages and their V4 patch are not part of this public source recipe. This document gives the current source-build path and the operational requirements for an isolated development test. It must not be treated as a completed end-to-end Mac installation guide.
+There is no published ready binary. Private owner packages have verified fresh-install and shutdown checks; the archives are not part of this public source recipe. The recipe applies the V4/V5 source overlay. This document gives the current source-build path and the operational requirements for an isolated development test. It must not be treated as a completed end-to-end Mac installation guide.
 
 ## Build the Linux server
 
@@ -12,7 +12,7 @@ sudo bash public-package.sh /absolute/new/fxserver-work
 python3 public-verify-package.py /absolute/new/fxserver-work/package
 ```
 
-The work directory must not already exist. The build uses the exact upstream source pin; it does not modify an existing server or start one. Keep the container, status, download hashes, package inventory and failure output for diagnosis. The scripts leave a failed run intact; investigate its actual error rather than blindly rerunning into the same directory. These portable scripts are still awaiting their own complete clean build/start validation.
+The work directory must not already exist. The build uses the pinned upstream base and verified V4/V5 source overlay; it does not modify an existing server or start one. Keep the container, status, download hashes, package inventory and failure output for diagnosis. The scripts leave a failed run intact; investigate its actual error rather than blindly rerunning into the same directory. These portable scripts are still awaiting their own complete clean build/start validation.
 
 ## Use a separate data directory
 

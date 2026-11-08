@@ -8,6 +8,7 @@
 #pragma once
 
 #include "StdInc.h"
+#include <atomic>
 
 #include "UvTcpServer.h"
 #include "UvLoopManager.h"
@@ -19,7 +20,9 @@ class UvLoopTimer
 {
 private:
 	std::vector<NodeScriptRuntime*> m_runtimes;
-	UvHandleContainer<uv_timer_t> m_timer;
+	std::unique_ptr<UvHandleContainer<uv_timer_t>> m_timer;
+	fwRefContainer<net::UvLoopHolder> m_loop;
+	std::atomic<bool> m_shutdownRequested{ false };
 	bool m_initialized = false;
 
 public:

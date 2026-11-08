@@ -1,16 +1,9 @@
 # Public FXServer source development build (Linux x86-64)
 
-For a public repository, copy **only** PUBLIC_BUILD.md, public-build.sh,
-public-build-container.sh, public-audit-submodules.py, public-package.sh,
-public-verify-package.py and public-smoke.sh from this working folder. The other local files
-record a private host build/deployment and must stay private. Do not copy
-the folder wholesale.
+The recipe checks out the exact 88a baseline and applies the 23 V4/V5 source files from this repository only after checking the pinned manifest hash and all base and overlay hashes. The source update and its hash inventory are described in [UPDATES.md](UPDATES.md). A complete clean portable V5 build remains untested.
 
-These scripts build CitizenFX/FiveM commit
-88a413835e9d7f56633f249880a13f42297153a2 with its original public CI
-script, then assemble a self-contained development package. The public CI
-script and FiveM C++, authentication, ticket and anti-cheat source stay
-unchanged. The scripts do not start a server, open ports, use operator keys or
+These scripts build CitizenFX/FiveM base commit
+88a413835e9d7f56633f249880a13f42297153a2 with the V4/V5 overlay using the original public CI script, then assemble a development package. The public CI script remains unchanged; the overlay updates the 23 listed C++ and test files. The scripts do not start a server, open ports, use operator keys or
 publish an archive.
 
 A fresh dedicated Linux x86-64 host needs Docker, Git, curl, Bash, Python 3, GNU
@@ -30,7 +23,7 @@ The wrapper prints and records the Docker container name and ID. After
 completion it leaves the container and build files for audit. On failure,
 inspect that container's logs and the work directory's status; do not restart
 blindly. The package step creates package/, a SHA256SUMS and SYMLINKS.txt
-inventory, plus fxserver-public-source-dev-88a4138-linux-x64.tar.xz and its
+inventory, plus fxserver-public-source-dev-88a4138-v5-overlay-linux-x64.tar.xz and its
 SHA-256 file. Packaging also runs a separate Docker loader/start smoke with
 no network or published ports and open stdin. It checks the five resource
 starts, stops its own container, and records any nonclean SIGINT exit without
@@ -40,7 +33,7 @@ calling it a successful shutdown. Repeat read-only file QA with:
 
 ## Fixed inputs and isolated repairs
 
-- Source commit 88a4138; all 174 recursive Gitlinks must be pinned. Shallow
+- Source base commit 88a4138 plus the verified 23-file V4/V5 overlay; all 174 recursive Gitlinks must be pinned. Shallow
   HDiffPatch recovery is limited to public tag v4.5.2 resolving to
   f62556a781f00cbe9212945bafed3ce01849c553. Empty worktrees with a
   correct HEAD are restored only if they contain no indexed files. Other
@@ -84,7 +77,7 @@ calling it a successful shutdown. Repeat read-only file QA with:
   and contains no key. Operators must supply a restricted LAN environment.
 
 Download hashes and URLs are in public-build.sh. The new work directory
-receives base-apk-versions.txt, toolchain-apk-versions.txt,
+receives source-overlay-inventory.json, base-apk-versions.txt, toolchain-apk-versions.txt,
 chat-apk-versions.txt, downloads.sha256, submodule-audit.txt and
 public-output.sha256. Upstream Alpine edge/Cfx package repositories and
 Python dependencies in proot_prepare.sh are time-varying. The scripts record
@@ -100,5 +93,4 @@ upstream licenses, and review the server-data resource repository's license
 status separately; any license chosen for independent original tooling does
 not replace CitizenFX or third-party terms. The source development smoke
 does not prove compatibility with public Cfx clients or server
-authentication behavior. Observed source-server SIGINT shutdown exit 139
-remains open.
+authentication behavior. The original baseline source-server SIGINT shutdown exit 139 remains historical evidence. Later V4 shutdown tests are described in [TEST_RESULTS.md](TEST_RESULTS.md).
